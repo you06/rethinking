@@ -42,6 +42,10 @@ cargo run -- --mcp-server -c rethinking.toml  # MCP server mode
 - Agent implementations use `#[async_trait]`
 - Tool definitions use `serde_json::json!` macro for JSON Schema
 
+## Completed Steps
+- WORK01: Core domain types (`src/types.rs`)
+- WORK02: Configuration system (`src/config.rs`) - TOML config loading with defaults
+
 ## Work Plan
 See `work/WORK01.md` through `work/WORK18.md` for step-by-step implementation plan.
 Each step should pass `cargo build` and `cargo test` before proceeding.
