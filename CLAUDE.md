@@ -45,6 +45,7 @@ cargo run -- --mcp-server -c rethinking.toml  # MCP server mode
 ## Completed Steps
 - WORK01: Core domain types (`src/types.rs`)
 - WORK02: Configuration system (`src/config.rs`) - TOML config loading with defaults
+- WORK03: Async runtime + logging + CLI skeleton (`src/main.rs`) - tokio, clap, tracing-subscriber
 
 ## Work Plan
 See `work/WORK01.md` through `work/WORK18.md` for step-by-step implementation plan.
