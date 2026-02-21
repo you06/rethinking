@@ -27,11 +27,26 @@ impl ForwardTools {
             work_dir,
         }
     }
+
+    /// Return tool definitions without needing a constructed instance.
+    pub fn tool_definitions() -> Vec<ToolDefinition> {
+        vec![
+            tool_query_data_db(),
+            tool_read_file(),
+            tool_query_memory(),
+            tool_run_python(),
+        ]
+    }
 }
 
 impl BackwardTools {
     pub fn new(memory_db: Arc<MemoryDB>) -> Self {
         Self { memory_db }
+    }
+
+    /// Return tool definitions without needing a constructed instance.
+    pub fn tool_definitions() -> Vec<ToolDefinition> {
+        vec![tool_execute_memory_sql(), tool_query_memory()]
     }
 }
 

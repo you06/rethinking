@@ -1,14 +1,5 @@
-mod agent;
-mod config;
-mod iteration;
-mod mcp_server;
-mod memory;
-mod script;
-mod subprocess;
-mod tools;
-mod types;
-
 use clap::Parser;
+use rethinking::{agent, config, iteration, mcp_server, memory, subprocess, tools, types};
 
 #[derive(Parser, Debug)]
 #[command(name = "rethinking", about = "AI iterative data analysis tool")]

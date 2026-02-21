@@ -7,7 +7,8 @@ Forward Pass (analyze) → Loss Computation (evaluate) → Stop Check (convergen
 ## Architecture
 ```
 src/
-  main.rs           -- CLI entry, arg parsing, main orchestration
+  lib.rs             -- Library crate root, re-exports all modules
+  main.rs            -- CLI entry, arg parsing, main orchestration (uses lib crate)
   config.rs          -- Config types and loading (TOML + CLI + env vars)
   types.rs           -- Core domain types: State, Goal, Score, IterationResult
   agent.rs           -- Agent trait + ToolExecutor trait + message types
@@ -17,12 +18,15 @@ src/
   iteration.rs       -- Forward / Loss / Stop / Backward iteration logic
   script.rs          -- Python script creation, execution, result collection
   mcp_server.rs      -- MCP server exposing all tools (memory DB, data source, Python scripts, file access)
+tests/
+  integration.rs     -- Integration tests (MockAgent, config/score/stop/message/script/tool tests)
 ```
 
 ## Build & Test
 ```bash
 cargo build          # Build
-cargo test           # Run tests
+cargo test           # Run tests (unit + integration)
+cargo test -- --ignored  # Run ignored tests (require external services)
 cargo run -- --help  # Show CLI help
 cargo run -- -c rethinking.toml  # Run with config
 cargo run -- --mcp-server -c rethinking.toml  # MCP server mode
@@ -60,6 +64,7 @@ cargo run -- --mcp-server -c rethinking.toml  # MCP server mode
 - WORK15: Main entry point (`src/main.rs`) - Full integration: config loading, work_dir resolution, memory DB connection, SubprocessAgent creation, tool sets, Goal building, run_iterations call, JSON result output
 - WORK16: MCP server (`src/mcp_server.rs`) - rmcp 0.16 macro-based MCP server exposing 5 tools (query_memory, execute_memory_sql, query_data_db, run_python, read_file) via stdio transport, integrated into main.rs --mcp-server mode
 - WORK17: Output formatting + result persistence (`src/types.rs`, `src/main.rs`) - Display impls for Score and RunResult (human-readable terminal output), JSON result file saving (config.output.result_file or work_dir/result.json)
+- WORK18: Integration tests (`src/lib.rs`, `tests/integration.rs`) - Library crate re-exports, MockAgent/MockToolExecutor, 17 integration tests (config parsing, score parsing, stop check logic, message serialization, Python script execution, tool definition validation, agent loop, RunResult display/serialization) + 1 ignored end-to-end test
 
 ## Work Plan
 See `work/WORK01.md` through `work/WORK18.md` for step-by-step implementation plan.
