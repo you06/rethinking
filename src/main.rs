@@ -1,5 +1,6 @@
 mod agent;
 mod config;
+mod subprocess;
 mod types;
 
 use clap::Parser;

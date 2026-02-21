@@ -47,6 +47,7 @@ cargo run -- --mcp-server -c rethinking.toml  # MCP server mode
 - WORK02: Configuration system (`src/config.rs`) - TOML config loading with defaults
 - WORK03: Async runtime + logging + CLI skeleton (`src/main.rs`) - tokio, clap, tracing-subscriber
 - WORK04: Agent trait + tool abstraction (`src/agent.rs`) - Agent/ToolExecutor traits, message types, run_agent_loop
+- WORK05: Subprocess agent (`src/subprocess.rs`) - SubprocessAgent calling CLI tools (codex/claude-code) via subprocess with MCP server config discovery
 
 ## Work Plan
 See `work/WORK01.md` through `work/WORK18.md` for step-by-step implementation plan.
