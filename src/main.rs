@@ -1,3 +1,5 @@
+mod types;
+
 fn main() {
-    println!("Hello, world!");
+    println!("rethinking - AI iterative data analysis");
 }
