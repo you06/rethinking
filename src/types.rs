@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// Analysis goal
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +38,12 @@ pub struct Score {
     pub reasoning: String,
 }
 
+impl fmt::Display for Score {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:.2} - {}", self.value, self.reasoning)
+    }
+}
+
 /// Single iteration result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IterationResult {
@@ -55,4 +62,27 @@ pub struct RunResult {
     pub iterations: Vec<IterationResult>,
     pub final_prompt: String,
     pub final_score: Score,
+}
+
+impl fmt::Display for RunResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "=== Rethinking Analysis Results ===")?;
+        writeln!(f, "Goal: {}", self.goal.description)?;
+        writeln!(f, "Iterations: {}", self.iterations.len())?;
+        writeln!(f, "Final Score: {:.2}/1.0", self.final_score.value)?;
+        writeln!(f, "Reasoning: {}", self.final_score.reasoning)?;
+        writeln!(f)?;
+        for iter in &self.iterations {
+            writeln!(f, "--- Iteration {} ---", iter.iteration)?;
+            writeln!(f, "  Score: {:.2}", iter.score.value)?;
+            writeln!(f, "  Converged: {}", iter.converged)?;
+            if let Some(ref path) = iter.script_path {
+                writeln!(f, "  Script: {}", path)?;
+            }
+        }
+        writeln!(f)?;
+        writeln!(f, "=== Final Prompt ===")?;
+        write!(f, "{}", self.final_prompt)?;
+        Ok(())
+    }
 }

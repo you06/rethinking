@@ -59,6 +59,7 @@ cargo run -- --mcp-server -c rethinking.toml  # MCP server mode
 - WORK14: Iteration orchestrator (`src/iteration.rs`) - run_iterations function assembling Forward Pass → Loss → Stop Check → Backward Pass into a complete iteration loop with State management and RunResult output
 - WORK15: Main entry point (`src/main.rs`) - Full integration: config loading, work_dir resolution, memory DB connection, SubprocessAgent creation, tool sets, Goal building, run_iterations call, JSON result output
 - WORK16: MCP server (`src/mcp_server.rs`) - rmcp 0.16 macro-based MCP server exposing 5 tools (query_memory, execute_memory_sql, query_data_db, run_python, read_file) via stdio transport, integrated into main.rs --mcp-server mode
+- WORK17: Output formatting + result persistence (`src/types.rs`, `src/main.rs`) - Display impls for Score and RunResult (human-readable terminal output), JSON result file saving (config.output.result_file or work_dir/result.json)
 
 ## Work Plan
 See `work/WORK01.md` through `work/WORK18.md` for step-by-step implementation plan.

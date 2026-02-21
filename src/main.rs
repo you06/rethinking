@@ -137,7 +137,17 @@ async fn run(cli: &Cli) -> anyhow::Result<()> {
         final_score = result.final_score.value,
         "analysis complete"
     );
-    println!("{}", serde_json::to_string_pretty(&result)?);
+    println!("{result}");
+
+    // 9. Save results to JSON file
+    let result_path = if config.output.result_file.is_empty() {
+        format!("{}/result.json", work_dir)
+    } else {
+        config.output.result_file.clone()
+    };
+    let json = serde_json::to_string_pretty(&result)?;
+    tokio::fs::write(&result_path, &json).await?;
+    tracing::info!(path = %result_path, "results saved");
 
     Ok(())
 }
