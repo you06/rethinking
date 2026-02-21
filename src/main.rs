@@ -3,6 +3,7 @@ mod config;
 mod memory;
 mod script;
 mod subprocess;
+mod tools;
 mod types;
 
 use clap::Parser;
