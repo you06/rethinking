@@ -52,6 +52,7 @@ cargo run -- --mcp-server -c rethinking.toml  # MCP server mode
 - WORK07: Connection pool + SQL operations + size management (`src/memory.rs`) - MemoryDB struct with connect/query/execute/get_size_mb/check_size, row-to-JSON conversion, result truncation at 1000 rows
 - WORK08: Python script management (`src/script.rs`) - run_python for writing/executing Python scripts, ScriptResult with stdout/stderr truncation (10KB), to_agent_string formatting
 - WORK09: Tool definitions + dispatch executor (`src/tools.rs`) - ForwardTools (query_data_db, read_file, query_memory, run_python) and BackwardTools (execute_memory_sql, query_memory) with ToolExecutor implementations, path safety checks for read_file
+- WORK10: Forward pass (`src/iteration.rs`) - ForwardResult struct, forward_pass function with system prompt building, agent tool-use loop, and script info extraction from message history
 
 ## Work Plan
 See `work/WORK01.md` through `work/WORK18.md` for step-by-step implementation plan.
