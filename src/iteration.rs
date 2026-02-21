@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use crate::agent::{run_agent_loop, Agent, ContentBlock, Message, Role};
 use crate::tools::ForwardTools;
-use crate::types::{Goal, State};
+use crate::types::{Goal, Score, State};
 
 /// Forward Pass result
 pub struct ForwardResult {
@@ -81,6 +81,75 @@ fn build_forward_system_prompt(state: &State, goal: &Goal) -> String {
     }
 
     prompt
+}
+
+/// Execute Loss Computation
+///
+/// Evaluates the quality of a forward pass analysis by asking the agent to
+/// score it on a 0.0–1.0 scale according to the goal's loss_prompt criteria.
+/// No tools are used — this is a pure text evaluation.
+pub async fn compute_loss(
+    agent: &dyn Agent,
+    goal: &Goal,
+    forward_result: &ForwardResult,
+) -> Result<Score> {
+    let system = format!(
+        "You are an evaluator. Score the quality of a data analysis on a scale of 0.0 to 1.0.\n\n\
+         Evaluation criteria:\n{}\n\n\
+         Respond with EXACTLY this JSON format:\n\
+         {{\"value\": <score>, \"reasoning\": \"<your reasoning>\"}}\n\n\
+         The score must be a decimal between 0.0 and 1.0.",
+        goal.loss_prompt
+    );
+
+    let mut content = format!("## Analysis Result\n\n{}", forward_result.analysis);
+    if let Some(ref output) = forward_result.script_output {
+        content.push_str(&format!("\n\n## Script Output\n\n{}", output));
+    }
+
+    let message = Message {
+        role: Role::User,
+        content: vec![ContentBlock::Text { text: content }],
+    };
+
+    let response = agent.chat(&[message], &[], &system).await?;
+
+    let text = response
+        .content
+        .iter()
+        .filter_map(|b| {
+            if let ContentBlock::Text { text } = b {
+                Some(text.as_str())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("");
+
+    let score = parse_score_from_text(&text)?;
+    let value = score.value.clamp(0.0, 1.0);
+
+    Ok(Score {
+        value,
+        reasoning: score.reasoning,
+    })
+}
+
+fn parse_score_from_text(text: &str) -> Result<Score> {
+    // Try parsing the entire text as JSON directly
+    if let Ok(score) = serde_json::from_str::<Score>(text) {
+        return Ok(score);
+    }
+    // Try extracting JSON block from text
+    if let Some(start) = text.find('{') {
+        if let Some(end) = text.rfind('}') {
+            if let Ok(score) = serde_json::from_str::<Score>(&text[start..=end]) {
+                return Ok(score);
+            }
+        }
+    }
+    anyhow::bail!("Failed to parse score from response: {text}")
 }
 
 /// Traverse messages to find the last run_python tool call and its result.
@@ -384,5 +453,41 @@ mod tests {
         let (path, output) = extract_script_info(&messages);
         assert_eq!(path.as_deref(), Some("compute.py"));
         assert_eq!(output.as_deref(), Some("--- stdout ---\nresult\n"));
+    }
+
+    #[test]
+    fn test_parse_score_pure_json() {
+        let input = r#"{"value": 0.85, "reasoning": "Good analysis"}"#;
+        let score = parse_score_from_text(input).unwrap();
+        assert!((score.value - 0.85).abs() < f64::EPSILON);
+        assert_eq!(score.reasoning, "Good analysis");
+    }
+
+    #[test]
+    fn test_parse_score_json_in_text() {
+        let input = r#"Here is my evaluation: {"value": 0.42, "reasoning": "Needs more detail"} That's it."#;
+        let score = parse_score_from_text(input).unwrap();
+        assert!((score.value - 0.42).abs() < f64::EPSILON);
+        assert_eq!(score.reasoning, "Needs more detail");
+    }
+
+    #[test]
+    fn test_parse_score_invalid_input() {
+        let input = "This is not valid JSON at all";
+        assert!(parse_score_from_text(input).is_err());
+    }
+
+    #[test]
+    fn test_parse_score_incomplete_json() {
+        let input = r#"{"value": 0.5}"#;
+        assert!(parse_score_from_text(input).is_err());
+    }
+
+    #[test]
+    fn test_parse_score_with_markdown_code_block() {
+        let input = "```json\n{\"value\": 0.73, \"reasoning\": \"Solid work\"}\n```";
+        let score = parse_score_from_text(input).unwrap();
+        assert!((score.value - 0.73).abs() < f64::EPSILON);
+        assert_eq!(score.reasoning, "Solid work");
     }
 }
