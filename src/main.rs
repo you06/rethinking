@@ -1,6 +1,7 @@
 mod agent;
 mod config;
 mod iteration;
+mod mcp_server;
 mod memory;
 mod script;
 mod subprocess;
@@ -46,8 +47,28 @@ async fn main() -> anyhow::Result<()> {
 
     if cli.mcp_server {
         tracing::info!("MCP server mode");
-        // TODO: WORK16
-        todo!("MCP server mode")
+
+        let config = config::Config::load(&cli.config)?;
+
+        let work_dir = cli
+            .work_dir
+            .clone()
+            .or(Some(config.output.work_dir.clone()))
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| ".rethinking_work".to_string());
+        tokio::fs::create_dir_all(&work_dir).await?;
+
+        let memory_dsn = memory::resolve_memory_dsn(&config.memory).await?;
+        let memory_db = std::sync::Arc::new(
+            memory::MemoryDB::connect(&memory_dsn, config.memory.size_limit_mb).await?,
+        );
+
+        return mcp_server::run_mcp_server(
+            memory_db,
+            config.goal.data_dsn.clone(),
+            work_dir,
+        )
+        .await;
     }
 
     run(&cli).await

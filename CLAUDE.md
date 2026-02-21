@@ -31,7 +31,7 @@ cargo run -- --mcp-server -c rethinking.toml  # MCP server mode
 ## Key Dependencies
 - tokio (async runtime), serde/serde_json/toml (serialization), reqwest (HTTP, for TiDB Zero API)
 - sqlx with mysql (any MySQL-compatible DB), clap (CLI), tracing (logging)
-- async-trait, anyhow, rmcp (MCP server)
+- async-trait, anyhow, rmcp (MCP server), schemars (JSON Schema for MCP tool params)
 
 ## Development Conventions
 - Edition 2024
@@ -58,6 +58,7 @@ cargo run -- --mcp-server -c rethinking.toml  # MCP server mode
 - WORK13: Backward pass (`src/iteration.rs`) - BackwardResult struct, backward_pass function with system prompt building, agent tool-use loop (BackwardTools), tolerant JSON parsing with fallback for updated_prompt and script_feedback
 - WORK14: Iteration orchestrator (`src/iteration.rs`) - run_iterations function assembling Forward Pass → Loss → Stop Check → Backward Pass into a complete iteration loop with State management and RunResult output
 - WORK15: Main entry point (`src/main.rs`) - Full integration: config loading, work_dir resolution, memory DB connection, SubprocessAgent creation, tool sets, Goal building, run_iterations call, JSON result output
+- WORK16: MCP server (`src/mcp_server.rs`) - rmcp 0.16 macro-based MCP server exposing 5 tools (query_memory, execute_memory_sql, query_data_db, run_python, read_file) via stdio transport, integrated into main.rs --mcp-server mode
 
 ## Work Plan
 See `work/WORK01.md` through `work/WORK18.md` for step-by-step implementation plan.
