@@ -57,6 +57,7 @@ cargo run -- --mcp-server -c rethinking.toml  # MCP server mode
 - WORK12: Stop check (`src/iteration.rs`) - check_stop function with min/max iteration bounds, convergence threshold, and patience-based delta convergence detection
 - WORK13: Backward pass (`src/iteration.rs`) - BackwardResult struct, backward_pass function with system prompt building, agent tool-use loop (BackwardTools), tolerant JSON parsing with fallback for updated_prompt and script_feedback
 - WORK14: Iteration orchestrator (`src/iteration.rs`) - run_iterations function assembling Forward Pass → Loss → Stop Check → Backward Pass into a complete iteration loop with State management and RunResult output
+- WORK15: Main entry point (`src/main.rs`) - Full integration: config loading, work_dir resolution, memory DB connection, SubprocessAgent creation, tool sets, Goal building, run_iterations call, JSON result output
 
 ## Work Plan
 See `work/WORK01.md` through `work/WORK18.md` for step-by-step implementation plan.
