@@ -1,6 +1,7 @@
 use anyhow::Result;
 
 use crate::agent::{run_agent_loop, Agent, ContentBlock, Message, Role};
+use crate::config::IterationConfig;
 use crate::tools::ForwardTools;
 use crate::types::{Goal, Score, State};
 
@@ -202,6 +203,49 @@ fn extract_script_info(messages: &[Message]) -> (Option<String>, Option<String>)
 
     // ToolUse found but no matching result (shouldn't happen in normal flow)
     (Some(filename), None)
+}
+
+/// Check whether iteration should stop.
+///
+/// Returns `true` if the loop should terminate based on iteration count,
+/// score convergence threshold, or patience-based convergence detection.
+pub fn check_stop(config: &IterationConfig, iteration: u32, scores: &[Score]) -> bool {
+    // Have not reached minimum iterations
+    if iteration < config.min_iterations {
+        return false;
+    }
+
+    // Reached maximum iterations
+    if iteration >= config.max_iterations {
+        tracing::info!("reached max iterations ({})", config.max_iterations);
+        return true;
+    }
+
+    // Check if score has reached threshold
+    if let Some(last) = scores.last() {
+        if last.value >= config.convergence_threshold {
+            tracing::info!(
+                score = last.value,
+                threshold = config.convergence_threshold,
+                "convergence threshold reached"
+            );
+            return true;
+        }
+    }
+
+    // Check patience (consecutive patience adjacent score differences all less than delta)
+    if scores.len() > config.patience as usize {
+        let recent = &scores[scores.len() - config.patience as usize - 1..];
+        let all_small_delta = recent
+            .windows(2)
+            .all(|w| (w[1].value - w[0].value).abs() < config.convergence_delta);
+        if all_small_delta {
+            tracing::info!(patience = config.patience, "converged (small delta)");
+            return true;
+        }
+    }
+
+    false
 }
 
 #[cfg(test)]
@@ -489,5 +533,104 @@ mod tests {
         let score = parse_score_from_text(input).unwrap();
         assert!((score.value - 0.73).abs() < f64::EPSILON);
         assert_eq!(score.reasoning, "Solid work");
+    }
+
+    fn make_config(
+        min: u32,
+        max: u32,
+        threshold: f64,
+        patience: u32,
+        delta: f64,
+    ) -> IterationConfig {
+        IterationConfig {
+            min_iterations: min,
+            max_iterations: max,
+            convergence_threshold: threshold,
+            patience,
+            convergence_delta: delta,
+        }
+    }
+
+    fn make_scores(values: &[f64]) -> Vec<Score> {
+        values
+            .iter()
+            .map(|&v| Score {
+                value: v,
+                reasoning: String::new(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_check_stop_below_min_iterations() {
+        let config = make_config(3, 10, 0.9, 3, 0.01);
+        // iteration 1 and 2 are below min_iterations=3, should not stop
+        assert!(!check_stop(&config, 1, &make_scores(&[0.95])));
+        assert!(!check_stop(&config, 2, &make_scores(&[0.95, 0.99])));
+    }
+
+    #[test]
+    fn test_check_stop_max_iterations() {
+        let config = make_config(1, 5, 0.9, 3, 0.01);
+        // iteration >= max_iterations should stop
+        assert!(check_stop(&config, 5, &make_scores(&[0.1, 0.2, 0.3, 0.4, 0.5])));
+        assert!(check_stop(&config, 10, &make_scores(&[0.1])));
+    }
+
+    #[test]
+    fn test_check_stop_convergence_threshold() {
+        let config = make_config(1, 10, 0.9, 3, 0.01);
+        // last score >= threshold should stop
+        assert!(check_stop(&config, 2, &make_scores(&[0.5, 0.9])));
+        assert!(check_stop(&config, 3, &make_scores(&[0.5, 0.8, 0.95])));
+        // last score below threshold should not stop
+        assert!(!check_stop(&config, 2, &make_scores(&[0.5, 0.89])));
+    }
+
+    #[test]
+    fn test_check_stop_patience_convergence() {
+        // patience=3, delta=0.01 -> need 4 scores where last 3 diffs are all < 0.01
+        let config = make_config(1, 10, 0.9, 3, 0.01);
+        let scores = make_scores(&[0.3, 0.5, 0.505, 0.508, 0.509]);
+        // Last 4 scores: 0.5, 0.505, 0.508, 0.509 -> diffs: 0.005, 0.003, 0.001 all < 0.01
+        assert!(check_stop(&config, 5, &scores));
+    }
+
+    #[test]
+    fn test_check_stop_patience_not_converged() {
+        let config = make_config(1, 10, 0.9, 3, 0.01);
+        // diffs include one >= 0.01
+        let scores = make_scores(&[0.3, 0.5, 0.52, 0.525, 0.526]);
+        // Last 4: 0.5, 0.52, 0.525, 0.526 -> diffs: 0.02, 0.005, 0.001 -> first diff >= 0.01
+        assert!(!check_stop(&config, 5, &scores));
+    }
+
+    #[test]
+    fn test_check_stop_patience_not_enough_scores() {
+        let config = make_config(1, 10, 0.9, 3, 0.01);
+        // Need patience+1=4 scores, only have 3
+        let scores = make_scores(&[0.5, 0.505, 0.508]);
+        assert!(!check_stop(&config, 3, &scores));
+    }
+
+    #[test]
+    fn test_check_stop_normal_case() {
+        let config = make_config(1, 10, 0.9, 3, 0.01);
+        // Not at max, not at threshold, not converged by patience
+        let scores = make_scores(&[0.3, 0.5, 0.65]);
+        assert!(!check_stop(&config, 3, &scores));
+    }
+
+    #[test]
+    fn test_check_stop_empty_scores() {
+        let config = make_config(1, 10, 0.9, 3, 0.01);
+        assert!(!check_stop(&config, 1, &[]));
+    }
+
+    #[test]
+    fn test_check_stop_exact_threshold() {
+        let config = make_config(1, 10, 0.9, 3, 0.01);
+        // score == threshold should stop (>=)
+        assert!(check_stop(&config, 1, &make_scores(&[0.9])));
     }
 }
