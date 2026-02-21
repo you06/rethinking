@@ -3,7 +3,95 @@ use anyhow::Result;
 use crate::agent::{run_agent_loop, Agent, ContentBlock, Message, Role};
 use crate::config::IterationConfig;
 use crate::tools::{BackwardTools, ForwardTools};
-use crate::types::{Goal, Score, State};
+use crate::types::{Goal, IterationResult, RunResult, Score, State};
+
+/// Run the complete iteration loop.
+///
+/// Orchestrates Forward Pass -> Loss Computation -> Stop Check -> Backward Pass
+/// until convergence or max iterations is reached.
+pub async fn run_iterations(
+    agent: &dyn Agent,
+    forward_tools: &ForwardTools,
+    backward_tools: &BackwardTools,
+    goal: &Goal,
+    config: &IterationConfig,
+    initial_prompt: &str,
+) -> Result<RunResult> {
+    let mut state = State {
+        prompt: initial_prompt.to_string(),
+        iteration: 0,
+        last_script: None,
+        last_output: None,
+        script_feedback: Vec::new(),
+    };
+
+    let mut iterations = Vec::new();
+    let mut scores = Vec::new();
+
+    loop {
+        state.iteration += 1;
+        tracing::info!(iteration = state.iteration, "starting iteration");
+
+        // 1. Forward Pass
+        tracing::info!("forward pass");
+        let forward_result = forward_pass(agent, forward_tools, &state, goal).await?;
+
+        // 2. Loss Computation
+        tracing::info!("computing loss");
+        let score = compute_loss(agent, goal, &forward_result).await?;
+        tracing::info!(score = score.value, reasoning = %score.reasoning, "loss computed");
+
+        scores.push(score.clone());
+
+        // 3. Stop Check
+        let converged = check_stop(config, state.iteration, &scores);
+
+        // 4. Backward Pass (unless already converged)
+        let updated_prompt = if !converged {
+            tracing::info!("backward pass");
+            let backward =
+                backward_pass(agent, backward_tools, &state, goal, &forward_result, &score)
+                    .await?;
+            state.script_feedback.push(backward.script_feedback.clone());
+            backward.updated_prompt
+        } else {
+            state.prompt.clone()
+        };
+
+        // Record iteration result
+        let iter_result = IterationResult {
+            iteration: state.iteration,
+            score: score.clone(),
+            script_path: forward_result.script_path.clone(),
+            script_output: forward_result.script_output.clone(),
+            updated_prompt: updated_prompt.clone(),
+            converged,
+        };
+        iterations.push(iter_result);
+
+        // Update state
+        state.prompt = updated_prompt;
+        state.last_script = forward_result.script_path;
+        state.last_output = forward_result.script_output;
+
+        if converged {
+            tracing::info!(iteration = state.iteration, "converged");
+            break;
+        }
+    }
+
+    let final_score = scores.last().cloned().unwrap_or(Score {
+        value: 0.0,
+        reasoning: "no iterations completed".into(),
+    });
+
+    Ok(RunResult {
+        goal: goal.clone(),
+        iterations,
+        final_prompt: state.prompt,
+        final_score,
+    })
+}
 
 /// Forward Pass result
 pub struct ForwardResult {
