@@ -55,6 +55,7 @@ cargo run -- --mcp-server -c rethinking.toml  # MCP server mode
 - WORK10: Forward pass (`src/iteration.rs`) - ForwardResult struct, forward_pass function with system prompt building, agent tool-use loop, and script info extraction from message history
 - WORK11: Loss computation (`src/iteration.rs`) - compute_loss function evaluating analysis quality via agent (no tools, pure text), parse_score_from_text with tolerant JSON extraction, score clamping to [0.0, 1.0]
 - WORK12: Stop check (`src/iteration.rs`) - check_stop function with min/max iteration bounds, convergence threshold, and patience-based delta convergence detection
+- WORK13: Backward pass (`src/iteration.rs`) - BackwardResult struct, backward_pass function with system prompt building, agent tool-use loop (BackwardTools), tolerant JSON parsing with fallback for updated_prompt and script_feedback
 
 ## Work Plan
 See `work/WORK01.md` through `work/WORK18.md` for step-by-step implementation plan.

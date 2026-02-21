@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use crate::agent::{run_agent_loop, Agent, ContentBlock, Message, Role};
 use crate::config::IterationConfig;
-use crate::tools::ForwardTools;
+use crate::tools::{BackwardTools, ForwardTools};
 use crate::types::{Goal, Score, State};
 
 /// Forward Pass result
@@ -246,6 +246,111 @@ pub fn check_stop(config: &IterationConfig, iteration: u32, scores: &[Score]) ->
     }
 
     false
+}
+
+/// Backward Pass result
+pub struct BackwardResult {
+    pub updated_prompt: String,
+    pub script_feedback: String,
+    pub messages: Vec<Message>,
+}
+
+/// Execute Backward Pass
+///
+/// Uses the current analysis results, score, and feedback to have the agent
+/// optimize the prompt. The agent can use BackwardTools (execute_memory_sql,
+/// query_memory) to store findings in the memory database.
+pub async fn backward_pass(
+    agent: &dyn Agent,
+    tools: &BackwardTools,
+    state: &State,
+    goal: &Goal,
+    forward_result: &ForwardResult,
+    score: &Score,
+) -> Result<BackwardResult> {
+    let system = format!(
+        "You are an optimization AI. Your job is to improve the data analysis process.\n\n\
+         Goal: {}\n\n\
+         The current analysis scored {:.2}/1.0.\n\
+         Reasoning: {}\n\n\
+         Your tasks:\n\
+         1. Store useful findings in the memory database (execute_memory_sql)\n\
+         2. Review the memory for patterns (query_memory)\n\
+         3. Provide an improved prompt for the next iteration\n\
+         4. Provide feedback on the Python script (if any)\n\n\
+         Respond with EXACTLY this JSON at the end:\n\
+         {{\"updated_prompt\": \"<improved prompt>\", \"script_feedback\": \"<feedback for script improvement>\"}}",
+        goal.description, score.value, score.reasoning
+    );
+
+    let user_content = format!(
+        "## Current State\n\
+         Iteration: {}\n\
+         Current prompt: {}\n\n\
+         ## Analysis Result\n{}\n\n\
+         ## Score\n{:.2} - {}\n\n\
+         Please optimize and provide the updated prompt.",
+        state.iteration, state.prompt, forward_result.analysis, score.value, score.reasoning
+    );
+
+    let initial_message = Message {
+        role: Role::User,
+        content: vec![ContentBlock::Text {
+            text: user_content,
+        }],
+    };
+
+    let (messages, final_text) = run_agent_loop(
+        agent,
+        tools as &dyn crate::agent::ToolExecutor,
+        vec![initial_message],
+        &system,
+    )
+    .await?;
+
+    let (updated_prompt, script_feedback) =
+        parse_backward_result(&final_text, &state.prompt);
+
+    Ok(BackwardResult {
+        updated_prompt,
+        script_feedback,
+        messages,
+    })
+}
+
+/// Parse backward pass JSON result from agent text.
+///
+/// Extracts `{"updated_prompt": "...", "script_feedback": "..."}` from the
+/// agent's response. On parse failure, falls back to the original prompt and
+/// empty feedback.
+fn parse_backward_result(text: &str, fallback_prompt: &str) -> (String, String) {
+    // Try the entire text as JSON
+    if let Some(result) = try_parse_backward_json(text) {
+        return result;
+    }
+    // Try extracting JSON object from surrounding text
+    if let Some(start) = text.find('{') {
+        if let Some(end) = text.rfind('}') {
+            if let Some(result) = try_parse_backward_json(&text[start..=end]) {
+                return result;
+            }
+        }
+    }
+    // Fallback
+    (fallback_prompt.to_string(), String::new())
+}
+
+fn try_parse_backward_json(text: &str) -> Option<(String, String)> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    let prompt = v.get("updated_prompt")?.as_str()?;
+    if prompt.is_empty() {
+        return None;
+    }
+    let feedback = v
+        .get("script_feedback")
+        .and_then(|f| f.as_str())
+        .unwrap_or("");
+    Some((prompt.to_string(), feedback.to_string()))
 }
 
 #[cfg(test)]
@@ -632,5 +737,53 @@ mod tests {
         let config = make_config(1, 10, 0.9, 3, 0.01);
         // score == threshold should stop (>=)
         assert!(check_stop(&config, 1, &make_scores(&[0.9])));
+    }
+
+    #[test]
+    fn test_parse_backward_result_pure_json() {
+        let input = r#"{"updated_prompt": "Analyze sales by region", "script_feedback": "Add error bars"}"#;
+        let (prompt, feedback) = parse_backward_result(input, "fallback");
+        assert_eq!(prompt, "Analyze sales by region");
+        assert_eq!(feedback, "Add error bars");
+    }
+
+    #[test]
+    fn test_parse_backward_result_json_in_text() {
+        let input = r#"Here is the optimized result: {"updated_prompt": "Better prompt", "script_feedback": "Use pandas"} Done."#;
+        let (prompt, feedback) = parse_backward_result(input, "fallback");
+        assert_eq!(prompt, "Better prompt");
+        assert_eq!(feedback, "Use pandas");
+    }
+
+    #[test]
+    fn test_parse_backward_result_missing_feedback() {
+        let input = r#"{"updated_prompt": "New prompt"}"#;
+        let (prompt, feedback) = parse_backward_result(input, "fallback");
+        assert_eq!(prompt, "New prompt");
+        assert_eq!(feedback, "");
+    }
+
+    #[test]
+    fn test_parse_backward_result_invalid_json() {
+        let input = "This is not valid JSON";
+        let (prompt, feedback) = parse_backward_result(input, "original prompt");
+        assert_eq!(prompt, "original prompt");
+        assert_eq!(feedback, "");
+    }
+
+    #[test]
+    fn test_parse_backward_result_empty_prompt_uses_fallback() {
+        let input = r#"{"updated_prompt": "", "script_feedback": "some feedback"}"#;
+        let (prompt, feedback) = parse_backward_result(input, "fallback");
+        assert_eq!(prompt, "fallback");
+        assert_eq!(feedback, "");
+    }
+
+    #[test]
+    fn test_parse_backward_result_with_markdown_code_block() {
+        let input = "```json\n{\"updated_prompt\": \"Improved analysis\", \"script_feedback\": \"Add charts\"}\n```";
+        let (prompt, feedback) = parse_backward_result(input, "fallback");
+        assert_eq!(prompt, "Improved analysis");
+        assert_eq!(feedback, "Add charts");
     }
 }
