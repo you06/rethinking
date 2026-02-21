@@ -1,7 +1,130 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use sqlx::mysql::MySqlPoolOptions;
+use sqlx::{Column, MySqlPool, Row};
 
 const TIDB_ZERO_API: &str = "https://zero.tidbapi.com/v1alpha1/instances";
+
+/// Maximum number of rows returned by a query before truncation.
+const MAX_QUERY_ROWS: usize = 1000;
+
+/// Memory database manager
+pub struct MemoryDB {
+    pub pool: MySqlPool,
+    pub size_limit_mb: u64,
+}
+
+impl MemoryDB {
+    /// Create connection pool from DSN (supports any MySQL protocol-compatible database)
+    pub async fn connect(dsn: &str, size_limit_mb: u64) -> Result<Self> {
+        let pool = MySqlPoolOptions::new()
+            .max_connections(5)
+            .connect(dsn)
+            .await
+            .context("failed to connect to memory database")?;
+
+        Ok(Self {
+            pool,
+            size_limit_mb,
+        })
+    }
+
+    /// Execute a query SQL (SELECT), return results in JSON format
+    pub async fn query(&self, sql: &str) -> Result<String> {
+        let rows = sqlx::query(sql)
+            .fetch_all(&self.pool)
+            .await
+            .context("failed to execute query")?;
+
+        let truncated = rows.len() > MAX_QUERY_ROWS;
+        let total_rows = rows.len();
+        let rows_to_process = if truncated { &rows[..MAX_QUERY_ROWS] } else { &rows[..] };
+
+        let mut results: Vec<serde_json::Value> = Vec::with_capacity(rows_to_process.len());
+
+        for row in rows_to_process {
+            let columns = row.columns();
+            let mut map = serde_json::Map::new();
+            for (i, col) in columns.iter().enumerate() {
+                let name = col.name().to_string();
+                let value = row_value_to_json(row, i);
+                map.insert(name, value);
+            }
+            results.push(serde_json::Value::Object(map));
+        }
+
+        if truncated {
+            let mut output = serde_json::to_string(&results)?;
+            output.push_str(&format!(
+                "\n[Notice: results truncated, showing {MAX_QUERY_ROWS} of {total_rows} rows]"
+            ));
+            Ok(output)
+        } else {
+            Ok(serde_json::to_string(&results)?)
+        }
+    }
+
+    /// Execute a write SQL (INSERT/UPDATE/DELETE/CREATE/ALTER), return affected rows count
+    pub async fn execute(&self, sql: &str) -> Result<String> {
+        let result = sqlx::query(sql)
+            .execute(&self.pool)
+            .await
+            .context("failed to execute SQL")?;
+
+        Ok(format!("Affected rows: {}", result.rows_affected()))
+    }
+
+    /// Get database size (MB)
+    pub async fn get_size_mb(&self) -> Result<f64> {
+        let row = sqlx::query(
+            "SELECT COALESCE(SUM(data_length + index_length) / 1024 / 1024, 0) AS size_mb \
+             FROM information_schema.tables WHERE table_schema = DATABASE()",
+        )
+        .fetch_one(&self.pool)
+        .await
+        .context("failed to query database size")?;
+
+        let size: f64 = row.try_get("size_mb").unwrap_or(0.0);
+        Ok(size)
+    }
+
+    /// Check if database size is within limit
+    pub async fn check_size(&self) -> Result<bool> {
+        let size = self.get_size_mb().await?;
+        Ok(size < self.size_limit_mb as f64)
+    }
+
+    /// Get pool reference (for MCP server use)
+    pub fn pool(&self) -> &MySqlPool {
+        &self.pool
+    }
+}
+
+/// Extract a column value from a MySQL row as a JSON value.
+/// Tries String first, then falls back to i64, f64, and finally null.
+fn row_value_to_json(row: &sqlx::mysql::MySqlRow, index: usize) -> serde_json::Value {
+    // Try String first
+    if let Ok(v) = row.try_get::<String, _>(index) {
+        return serde_json::Value::String(v);
+    }
+    // Try i64
+    if let Ok(v) = row.try_get::<i64, _>(index) {
+        return serde_json::Value::Number(v.into());
+    }
+    // Try f64
+    if let Ok(v) = row.try_get::<f64, _>(index) {
+        if let Some(n) = serde_json::Number::from_f64(v) {
+            return serde_json::Value::Number(n);
+        }
+        return serde_json::Value::String(v.to_string());
+    }
+    // Try bool
+    if let Ok(v) = row.try_get::<bool, _>(index) {
+        return serde_json::Value::Bool(v);
+    }
+    // NULL or unsupported type
+    serde_json::Value::Null
+}
 
 /// TiDB Zero instance information
 #[derive(Debug, Clone, Serialize, Deserialize)]
