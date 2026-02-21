@@ -50,6 +50,7 @@ cargo run -- --mcp-server -c rethinking.toml  # MCP server mode
 - WORK05: Subprocess agent (`src/subprocess.rs`) - SubprocessAgent calling CLI tools (codex/claude-code) via subprocess with MCP server config discovery
 - WORK06: Memory database instance creation (`src/memory.rs`) - TiDB Zero auto-provisioning + custom DSN support, resolve_memory_dsn entry point
 - WORK07: Connection pool + SQL operations + size management (`src/memory.rs`) - MemoryDB struct with connect/query/execute/get_size_mb/check_size, row-to-JSON conversion, result truncation at 1000 rows
+- WORK08: Python script management (`src/script.rs`) - run_python for writing/executing Python scripts, ScriptResult with stdout/stderr truncation (10KB), to_agent_string formatting
 
 ## Work Plan
 See `work/WORK01.md` through `work/WORK18.md` for step-by-step implementation plan.

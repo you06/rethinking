@@ -1,6 +1,7 @@
 mod agent;
 mod config;
 mod memory;
+mod script;
 mod subprocess;
 mod types;
 
