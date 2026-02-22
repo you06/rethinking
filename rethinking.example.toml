@@ -1,0 +1,64 @@
+# Rethinking configuration file
+# Copy this file to rethinking.toml and fill in the required fields.
+
+# ─── Goal (required) ─────────────────────────────────────────────────────────
+[goal]
+# High-level description of the analysis goal (required)
+description = "Analyze sales data and identify key trends"
+
+# Prompt used to score analysis quality on a 0.0–1.0 scale (required)
+loss_prompt = "Evaluate the analysis quality: completeness, correctness, and insight depth"
+
+# MySQL-compatible DSN for the data source database (required)
+data_dsn = "mysql://user:password@host:4000/database"
+
+# Data file paths relative to work_dir (default: [])
+# data_files = ["data/sales.csv", "data/products.csv"]
+
+# Starting prompt for the first iteration (default: "")
+# initial_prompt = "Begin by exploring the schema and summarizing key tables"
+
+# ─── Agent ────────────────────────────────────────────────────────────────────
+[agent]
+# CLI tool to invoke: "codex" or "claude-code" (default: "codex")
+# command = "codex"
+
+# Model name passed to the CLI tool (default: "o4-mini")
+# model = "o4-mini"
+
+# ─── Memory database ─────────────────────────────────────────────────────────
+[memory]
+# MySQL DSN for the memory database.
+# If empty, auto-provisions a temporary TiDB Zero instance. (default: "")
+# dsn = "mysql://user:password@host:3306/memory"
+
+# TiDB Zero instance tag, only used when dsn is empty (default: "rethinking")
+# tag = "rethinking"
+
+# Memory database size limit in MB (default: 512)
+# size_limit_mb = 512
+
+# ─── Iteration control ───────────────────────────────────────────────────────
+[iteration]
+# Minimum iterations before convergence check kicks in (default: 1)
+# min_iterations = 1
+
+# Hard stop iteration limit (default: 10)
+# max_iterations = 10
+
+# Score >= this value is considered converged (default: 0.9)
+# convergence_threshold = 0.9
+
+# Number of consecutive low-delta scores to trigger early stop (default: 3)
+# patience = 3
+
+# Delta threshold for patience-based convergence (default: 0.01)
+# convergence_delta = 0.01
+
+# ─── Output ───────────────────────────────────────────────────────────────────
+[output]
+# Working directory for scripts and results (default: ".rethinking_work")
+# work_dir = ""
+
+# Path for the JSON result file (default: "{work_dir}/result.json")
+# result_file = ""
